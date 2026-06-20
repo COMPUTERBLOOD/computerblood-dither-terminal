@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8"/>
+        <title>COMPUTERBLOOD DITHER TERMINAL</title>
+        <meta name="description" content="A Computerblood retro image terminal for symbolic dithering, pixel decay, and custom color corruption."/>
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <link rel="preconnect" href="https://fonts.googleapis.com"/>
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+        <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+        <link rel="icon" type="image/x-icon" href="./favicon.ico"/>
+        <link rel="icon" type="image/png" href="./favicon.png"/>
+        <link rel="stylesheet" type="text/css" href="./assets/style.css?v=1781980777430"/>
+        <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
+    </head>
+    <body>
+        <!-- This extra .total-page div is required for FireFox full screen mode to allow scrolling. -->
+        <div class="total-page">
+            <header class="header">
+                <nav class="nav">
+                    <div class="brand-lockup">
+                        <h1 class="brand">
+                            <span class="brand-prefix">CB://</span>
+                            <span class="brand-main">COMPUTERBLOOD DITHER TERMINAL</span>
+                        </h1>
+                        <p class="brand-deck">visual barbarism image corruption/ milked from the motherboard/ transfusion lab</p>
+                    </div>
+                </nav>
+            </header>
+            <main>
+                <noscript>COMPUTERBLOOD DITHER TERMINAL requires JavaScript to run. Please enable JavaScript in your browser settings and reload this page.</noscript>
+                <div id="app" data-is-dev="false"></div>
+            </main>
+            <footer class="site-footer">
+                <ul>
+                    <li>
+                        <a href="https://www.dithermark.com/faq" target="_blank">Manual</a>
+                    </li>
+                    <li>
+                        <a href="https://github.com/allen-garvey/dithermark" target="_blank">Source</a>
+                    </li>
+                </ul>
+            </footer>
+        </div>
+        <script type="webgl/shader" id="webgl-vertex-shader">#version 300 es
+
+in vec2 a_position;
+in vec2 a_texcoord;
+
+uniform vec2 u_resolution;
+
+out vec2 v_texcoord;
+
+void main() {
+
+  vec2 zeroToOne = a_position / u_resolution;
+
+  vec2 zeroToTwo = zeroToOne * 2.0;
+
+  vec2 clipSpace = zeroToTwo - 1.0;
+
+  gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
+
+  v_texcoord = a_texcoord;
+}</script><script type="webgl/shader" id="webgl-fragment-shader-smoothing">#version 300 es
+precision highp float;
+
+in vec2 v_texcoord;
+out vec4 output_color;
+uniform sampler2D u_texture;
+uniform int u_radius;
+
+const int maxRadius = 16;
+uniform vec2 u_image_dimensions;
+
+void main() {
+    vec4 pixel = texture(u_texture, v_texcoord);
+    vec2 uv = v_texcoord;
+    int radiusDiff = maxRadius - u_radius;
+    float n = float((u_radius + 1) * (u_radius + 1));
+
+    vec3 m[4];
+    vec3 s[4];
+    for(int k = 0; k < 4; ++k) {
+        m[k] = vec3(0.0);
+        s[k] = vec3(0.0);
+    }
+
+    for(int j = -maxRadius; j <= 0; ++j) {
+        if(j > -radiusDiff) {
+            break;
+        }
+        for(int i = -maxRadius; i <= 0; ++i) {
+            if(i > -radiusDiff) {
+                break;
+            }
+            vec3 c = texture(u_texture, uv + vec2(i + radiusDiff, j + radiusDiff) / u_image_dimensions).rgb;
+            m[0] += c;
+            s[0] += c * c;
+        }
+    }
+
+    for(int j = -maxRadius; j <= 0; ++j) {
+        if(j > -radiusDiff) {
+            break;
+        }
+        for(int i = 0; i <= maxRadius; ++i) {
+            if(i > u_radius) {
+                break;
+            }
+            vec3 c = texture(u_texture, uv + vec2(i, j + radiusDiff) / u_image_dimensions).rgb;
+            m[1] += c;
+            s[1] += c * c;
+        }
+    }
+
+    for(int j = 0; j <= maxRadius; ++j) {
+        if(j > u_radius) {
+            break;
+        }
+        for(int i = 0; i <= maxRadius; ++i) {
+            if(i > u_radius) {
+                break;
+            }
+            vec3 c = texture(u_texture, uv + vec2(i, j) / u_image_dimensions).rgb;
+            m[2] += c;
+            s[2] += c * c;
+        }
+    }
+
+    for(int j = 0; j <= maxRadius; ++j) {
+        if(j > u_radius) {
+            break;
+        }
+        for(int i = -maxRadius; i <= 0; ++i) {
+            if(i > -radiusDiff) {
+                break;
+            }
+            vec3 c = texture(u_texture, uv + vec2(i + radiusDiff, j) / u_image_dimensions).rgb;
+            m[3] += c;
+            s[3] += c * c;
+        }
+    }
+
+    float min_sigma2 = 1e+2;
+    for(int k = 0; k < 4; ++k) {
+        m[k] /= n;
+        s[k] = abs(s[k] / n - m[k] * m[k]);
+
+        float sigma2 = s[k].r + s[k].g + s[k].b;
+        if(sigma2 < min_sigma2) {
+            min_sigma2 = sigma2;
+            output_color = vec4(m[k], pixel.a);
+        }
+    }
+}</script><script type="webgl/shader" id="webgl-fragment-canvas-filters">#version 300 es
+precision highp float;
+
+in vec2 v_texcoord;
+out vec4 output_color;
+uniform sampler2D u_texture;
+uniform float u_contrast;
+uniform float u_saturation;
+uniform float u_brightness;
+uniform float u_hue_rotation;
+
+#{{hsvFunctions}}
+
+float hue_rotate(float pixelHue, float hueRotation) {
+    return mod(pixelHue + hueRotation, 1.0);
+}
+
+void main() {
+    vec4 pixel = texture(u_texture, v_texcoord);
+
+    vec3 adjustedPixel = pixel.rgb;
+
+    vec3 hsvPixel = rgb2hsv(adjustedPixel);
+    adjustedPixel = hsv2rgb(vec3(hue_rotate(hsvPixel.r, u_hue_rotation), hsvPixel.g * u_saturation, hsvPixel.b));
+
+    if(u_contrast >= 0.0) {
+        adjustedPixel = (adjustedPixel - 0.5) / (1.0 - u_contrast) + 0.5;
+    } else {
+        adjustedPixel = (adjustedPixel - 0.5) * (1.0 + u_contrast) + 0.5;
+    }
+
+    adjustedPixel *= u_brightness;
+
+    output_color = vec4(adjustedPixel, pixel.a);
+
+}</script><script type="webgl/shader" id="webgl-fragment-shader-bilateral-filter">#version 300 es
+precision highp float;
+
+/*
+Copyright (C) 2011 by Evan Wallace
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+in vec2 v_texcoord;
+out vec4 output_color;
+uniform sampler2D u_texture;
+uniform float u_exponent;
+uniform vec2 u_image_dimensions;
+void main() {
+    vec4 center = texture(u_texture, v_texcoord);
+    vec4 color = vec4(0.0);
+    float total = 0.0;
+    for(float x = -4.0; x <= 4.0; x += 1.0) {
+        for(float y = -4.0; y <= 4.0; y += 1.0) {
+            vec4 sample1 = texture(u_texture, v_texcoord + vec2(x, y) / u_image_dimensions);
+            float weight = 1.0 - abs(dot(sample1.rgb - center.rgb, vec3(0.25)));
+            weight = pow(weight, u_exponent);
+            color += sample1 * weight;
+            total += weight;
+        }
+    }
+    output_color = color / total;
+}
+</script><script type="webgl/shader" id="webgl-fragment-shader-unsharp-mask">#version 300 es
+precision highp float;
+
+/*
+Copyright (C) 2011 by Evan Wallace
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+in vec2 v_texcoord;
+out vec4 output_color;
+
+uniform sampler2D u_texture;
+uniform float u_strength;
+uniform vec2 u_radius;
+
+float random(vec3 scale, float seed) {
+    return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);
+}
+
+void main() {
+
+    vec4 blurred_color = vec4(0.0);
+    float total = 0.0;
+
+    float offset = random(vec3(12.9898, 78.233, 151.7182), 0.0);
+    
+    for (float t = -30.0; t <= 30.0; t++) {
+        float percent = (t + offset - 0.5) / 30.0;
+        float weight = 1.0 - abs(percent);
+        vec4 current_sample = texture(u_texture, v_texcoord + u_radius * percent);
+
+        current_sample.rgb *= current_sample.a;
+        
+        blurred_color += current_sample * weight;
+        total += weight;
+    }
+    
+    blurred_color = blurred_color / total;
+
+    blurred_color.rgb /= blurred_color.a + 0.00001;
+
+    vec4 original = texture(u_texture, v_texcoord);
+    output_color = mix(blurred_color, original, 1.0 + u_strength);
+}</script><script type="webgl/shader" id="webgl-fragment-edge-filter-base">#version 300 es
+
+/*
+Copyright (C) 2011 by Evan Wallace
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+    
+precision highp float;
+
+uniform sampler2D u_texture;
+uniform float u_strength;
+uniform vec2 u_image_dimensions;
+in vec2 v_texcoord;
+out vec4 output_color;
+
+#{{customDeclaration}}
+
+void main(){
+    vec4 pixel = texture(u_texture, v_texcoord);
+
+    vec2 dx = vec2(1.0 / u_image_dimensions.x, 0.0);
+    vec2 dy = vec2(0.0, 1.0 / u_image_dimensions.y);
+    float bigTotal = 0.0;
+    float smallTotal = 0.0;
+    vec3 bigAverage = vec3(0.0);
+    vec3 smallAverage = vec3(0.0);
+    for (float x = -#{{edgeThickness}}; x <= #{{edgeThickness}}; x += 1.0) {
+        for (float y = -#{{edgeThickness}}; y <= #{{edgeThickness}}; y += 1.0) {
+            vec3 sample1 = texture(u_texture, v_texcoord + dx * x + dy * y).rgb;
+            bigAverage += sample1;
+            bigTotal += 1.0;
+            if (abs(x) + abs(y) < #{{edgeThickness}}) {
+                smallAverage += sample1;
+                smallTotal += 1.0;
+            }
+        }
+    }
+    vec3 edge = max(vec3(0.0), bigAverage / bigTotal - smallAverage / smallTotal);
+    vec3 edgeDiff = pixel.rgb - dot(edge, edge) * u_strength;
+    
+    if(max(max(edgeDiff.r, edgeDiff.g), edgeDiff.b) <= 0.0){
+        output_color = #{{customOutlineColor}}
+    }
+    else{
+        output_color = vec4(0.0);    
+    }
+}
+</script><script type="webgl/shader" id="webgl-fragment-edge-filter-declaration-background">uniform sampler2D u_background_texture;
+uniform int u_colors_array_length;
+uniform vec3 u_colors_array[18];
+
+#{{lightnessFunction}}
+#{{hslFunctions}}
+#{{labFunctions}}
+#{{distanceFunction}}
+
+vec3 get_dark_outline_color(vec3 backgroundPixel){
+    vec3 outlineColor = backgroundPixel;
+    float backgroundLightness = lightness(backgroundPixel);
+
+    float shortestDistance = 99999.99;
+    for(int i=0;i<u_colors_array_length;i++){
+        vec3 currentColor = u_colors_array[i];
+        float currentDistance = quick_distance(backgroundPixel, currentColor);
+        if(lightness(currentColor) < backgroundLightness && currentDistance < shortestDistance){
+            shortestDistance = currentDistance;
+            outlineColor = currentColor;
+        }
+    }
+
+    return outlineColor;
+}</script><script type="webgl/shader" id="webgl-fragment-contour-filter1">#version 300 es
+
+/*
+Copyright (C) 2011 by Evan Wallace
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+precision highp float;
+
+uniform sampler2D u_texture;
+out vec4 output_color;
+in vec2 v_texcoord;
+uniform float u_radius;
+
+float random(vec3 scale, float seed) {
+    return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);
+}
+
+void main(){
+    vec4 pixel = texture(u_texture, v_texcoord);
+
+    vec2 color = vec2(0.0);
+    vec2 total = vec2(0.0);
+
+    float offset = random(vec3(12.9898, 78.233, 151.7182), 0.0);
+    for(float t = -30.0; t <= 30.0; t++){
+        float percent = (t + offset - 0.5) / 30.0;
+        float weight = 1.0 - abs(percent);
+        vec3 sample1 = texture(u_texture, v_texcoord + vec2(u_radius, 0.0) * percent).rgb;
+        float average = (sample1.r + sample1.g + sample1.b) / 3.0;
+        color.x += average * weight;
+        total.x += weight;
+        if(abs(t) < 15.0){
+            weight = weight * 2.0 - 1.0;
+            color.y += average * weight;
+            total.y += weight;
+        }
+    }
+    output_color = vec4(color / total, 0.0, 1.0);
+}</script><script type="webgl/shader" id="webgl-fragment-contour-filter2-base">#version 300 es
+
+precision highp float;
+
+uniform sampler2D u_texture;
+out vec4 output_color;
+in vec2 v_texcoord;
+uniform float u_radius;
+
+#{{customDeclaration}}
+
+float random(vec3 scale, float seed) {
+    return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);
+}
+
+void main(){
+    vec4 pixel = texture(u_texture, v_texcoord);
+    
+    vec2 color = vec2(0.0);
+    vec2 total = vec2(0.0);
+
+    float offset = random(vec3(12.9898, 78.233, 151.7182), 0.0);
+
+    for(float t = -30.0; t <= 30.0; t++){
+        float percent = (t + offset - 0.5) / 30.0;
+        float weight = 1.0 - abs(percent);
+        vec2 sample1 = texture(u_texture, v_texcoord + vec2(0.0, u_radius) * percent).xy;
+        color.x += sample1.x * weight;
+        total.x += weight;
+        if(abs(t) < 15.0){
+            weight = weight * 2.0 - 1.0;
+            color.y += sample1.y * weight;
+            total.y += weight;
+        }
+    }
+    float c = clamp(10000.0 * (color.y / total.y - color.x / total.x) + 0.5, 0.0, 1.0);
+    if(c < 0.5){
+        output_color = #{{customOutlineColor}}
+    }
+    else{
+        output_color = vec4(0.0);
+    }
+}</script><script type="webgl/shader" id="webgl-fragment-contour-filter2-declaration-background">uniform sampler2D u_background_texture;
+uniform int u_colors_array_length;
+uniform vec3 u_colors_array[18];
+
+#{{lightnessFunction}}
+#{{hslFunctions}}
+#{{labFunctions}}
+#{{distanceFunction}}
+
+vec3 get_dark_outline_color(vec3 backgroundPixel){
+    vec3 outlineColor = backgroundPixel;
+    float backgroundLightness = lightness(backgroundPixel);
+
+    float shortestDistance = 99999.99;
+    for(int i=0;i<u_colors_array_length;i++){
+        vec3 currentColor = u_colors_array[i];
+        float currentDistance = quick_distance(backgroundPixel, currentColor);
+        if(lightness(currentColor) < backgroundLightness && currentDistance < shortestDistance){
+            shortestDistance = currentDistance;
+            outlineColor = currentColor;
+        }
+    }
+
+    return outlineColor;
+}</script><script type="webgl/shader" id="webgl-bitwise-function-template">
+int #{{functionName}}(int n1, int n2){
+
+    float v1 = float(n1);
+    float v2 = float(n2);
+    
+    int byteVal = 1;
+    int result = 0;
+    
+    for(int i = 0; i < 32; i++){
+
+        if(v1 < 0.5 || v2 < 0.5){
+            return result;
+        }
+        bool bit1IsOdd = mod(v1, 2.0) > 0.5;
+        bool bit2IsOdd = mod(v2, 2.0) > 0.5;
+        if(#{{operation}}){
+            result += byteVal;
+        }
+        v1 = floor(v1 / 2.0);
+        v2 = floor(v2 / 2.0);
+        byteVal *= 2;
+    }
+    return result;
+}</script><script type="webgl/shader" id="webgl-arithmetic-dither-fshader-declaration">
+precision highp int;
+
+#{{bitwiseFunctions}}
+
+float aDitherMask1(int x, int y){
+    return float(AND(XOR(x, y * 149) * 1234, 511)) / 511.0;
+}
+
+float aDitherMask2(int x, int y, int c){
+    return float(AND(XOR(x + (c * 17), y * 149) * 1234, 511)) / 511.0;
+}
+
+float aDitherMask3(int x, int y){
+    return float(AND((x + (y * 237)) * 119,  255)) / 255.0;
+}
+
+float aDitherMask4(int x, int y, int c){
+    return float(AND(((c * 67 + x) + (y * 236)) * 119, 255)) / 255.0;
+}
+
+float arithmeticDither(vec2 pos, vec3 pixel){
+    int x = int(pos.x);
+    int y = int(pos.y);
+    return #{{arithmeticDitherReturn}};
+
+}</script><script type="webgl/shader" id="webgl-hsl-functions">
+vec3 RGBtoHCV(vec3 rgb){
+    float epsilon = 1.0e-10;
+
+    vec4 P = (rgb.g < rgb.b) ? vec4(rgb.bg, -1.0, 2.0/3.0) : vec4(rgb.gb, 0.0, -1.0/3.0);
+    vec4 Q = (rgb.r < P.x) ? vec4(P.xyw, rgb.r) : vec4(rgb.r, P.yzx);
+    float C = Q.x - min(Q.w, Q.y);
+    float H = abs((Q.w - Q.y) / (6.0 * C + epsilon) + Q.z);
+    return vec3(H, C, Q.x);
+}
+
+vec3 HUEtoRGB(float hue){
+    float r = abs(hue * 6.0 - 3.0) - 1.0;
+    float g = 2.0 - abs(hue * 6.0 - 2.0);
+    float b = 2.0 - abs(hue * 6.0 - 4.0);
+
+    return clamp(vec3(r, g, b), 0.0, 1.0);
+}
+
+float pixelSaturation(vec3 pixel){
+    float maxValue = max(max(pixel.r, pixel.g), pixel.b);
+    float minValue = min(min(pixel.r, pixel.g), pixel.b);
+    if(maxValue == minValue){
+        return 0.0;
+    }
+    float c = (maxValue + minValue) / 2.0;
+    float diff = maxValue - minValue;
+    return c > 0.5 ? diff / (2.0 - diff) : diff / (maxValue + minValue);
+}
+
+vec3 rgb2hsl(vec3 pixel){
+    vec3 hcv = RGBtoHCV(pixel);
+    float l = hcv.z - hcv.y * 0.5;
+    return vec3(hcv.x, pixelSaturation(pixel), l);
+}
+
+vec3 hsl2rgb(vec3 pixel){
+    vec3 rgb = HUEtoRGB(pixel.x);
+    float c = (1.0 - abs(2.0 * pixel.z - 1.0)) * pixel.y;
+    return (rgb - 0.5) * c + pixel.z;
+}
+
+float hue_distance(float hue1, float hue2){
+    float distance = abs(hue1 - hue2);
+
+    return min(distance, 1.0 - distance);
+}
+
+float hue(vec3 pixel){
+    return rgb2hsl(pixel).r;
+}
+
+float pixel_luma(vec3 pixel){
+    return dot(vec3(0.299, 0.587, 0.114), pixel);
+}</script><script type="webgl/shader" id="webgl-hsv-functions">
+vec3 rgb2hsv(vec3 c){
+    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+
+    vec4 p = c.g < c.b ? vec4(c.bg, K.wz) : vec4(c.gb, K.xy);
+    vec4 q = c.r < p.x ? vec4(p.xyw, c.r) : vec4(c.r, p.yzx);
+
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+vec3 hsv2rgb(vec3 c){
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}</script><script type="webgl/shader" id="webgl-fragment-shader-lightness-function">float lightness(vec3 pixel){
+    float maxVal = max(max(pixel.r, pixel.g), pixel.b);
+    float minVal = min(min(pixel.r, pixel.g), pixel.b);
+    return (maxVal + minVal) / 2.0;
+}</script><script type="webgl/shader" id="webgl-lab-functions">float rgbValueToLinear(float c) {
+    return c >= 0.04045 ? pow((c + 0.055) / 1.055, 2.4) : c / 12.92;
+}
+
+vec3 rgbToLinear(vec3 rgb) {
+    return vec3(rgbValueToLinear(rgb.r), rgbValueToLinear(rgb.g), rgbValueToLinear(rgb.b));
+}
+
+vec3 rgbToOklab(vec3 rgb) {
+    vec3 linear = rgbToLinear(rgb);
+
+    vec3 lms = vec3(
+        pow(dot(vec3(0.4122214708, 0.5363325363, 0.0514459929), linear), 1.0/3.0),
+        pow(dot(vec3(0.2119034982, 0.6806995451, 0.1073969566), linear), 1.0/3.0),
+        pow(dot(vec3(0.0883024619, 0.2817188376, 0.6299787005), linear), 1.0/3.0)
+    );
+
+    return vec3(
+        dot(vec3(0.2104542553, 0.793617785, -0.0040720468), lms),
+        dot(vec3(1.9779984951, -2.428592205, 0.4505937099), lms),
+        dot(vec3(0.0259040371, 0.7827717662, -0.808675766), lms)
+    );
+}
+
+vec3 rgbToCieLab(vec3 rgb) {
+    vec3 linear = rgbToLinear(rgb);
+
+    float x = dot(vec3(0.4124, 0.3576, 0.1805), linear) / 0.95047;
+    float y = dot(vec3(0.2126, 0.7152 ,0.0722), linear);
+    float z = dot(vec3(0.0193, 0.1192, 0.9505), linear) / 1.08883;
+
+    x = x > 0.008856 ? pow(x, 1.0/3.0) : 7.787 * x + 16.0 / 116.0;
+    y = y > 0.008856 ? pow(y, 1.0/3.0) : 7.787 * y + 16.0 / 116.0;
+    z = z > 0.008856 ? pow(z, 1.0/3.0) : 7.787 * z + 16.0 / 116.0;
+
+    return vec3(116.0 * y - 16.0, 500.0 * (x - y), 200.0 * (y - z));
+}</script><script type="webgl/shader" id="webgl-hsl2-complementary-distance">
+float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 hsl1 = rgb2hsl(pixel1);
+    vec3 hsl2 = rgb2hsl(pixel2);
+
+    float hDist = 0.5 - hue_distance(hsl1.r, hsl2.r);
+    vec2 slDist = hsl1.gb - hsl2.gb;  
+    vec3 hslDist = vec3(hDist, slDist);
+
+    return dot(vec3(8.0, 1.0, 4.0), hslDist * hslDist);
+}</script><script type="webgl/shader" id="webgl-hsl2-distance">
+float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 hsl1 = rgb2hsl(pixel1);
+    vec3 hsl2 = rgb2hsl(pixel2);
+    float hDist = hue_distance(hsl1.r, hsl2.r);
+    vec2 slDist = hsl1.gb - hsl2.gb;  
+    vec3 hslDist = vec3(hDist, slDist);
+
+    return dot(vec3(8.0, 1.0, 4.0), hslDist * hslDist);
+}</script><script type="webgl/shader" id="webgl-hue-distance">
+float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 hsl1 = rgb2hsl(pixel1);
+    vec3 hsl2 = rgb2hsl(pixel2);
+    float hueDist = hue_distance(hsl1.x, hsl2.x);
+
+    if(hsl1.y < 0.07){
+        float fraction = hsl1.y / 0.07;
+        vec2 hlDist = vec2(hueDist, hsl1.z - hsl2.z);
+        return dot(vec2(8.0 * fraction, (1.0 - fraction)), hlDist*hlDist);
+    }
+    return hueDist * hueDist;
+}</script><script type="webgl/shader" id="webgl-hue-lightness-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 hsl1 = rgb2hsl(pixel1);
+    vec3 hsl2 = rgb2hsl(pixel2);
+    vec2 hlDist = vec2(hue_distance(hsl1.x, hsl2.x), hsl1.z - hsl2.z);
+
+    if(hsl1.y < 0.3){
+        float fraction = hsl1.y / 0.3;
+        return dot(vec2(2.0 * fraction, (1.0 - fraction)), hlDist*hlDist);
+    }
+    return dot(vec2(32.0, 1.0), hlDist*hlDist);
+}</script><script type="webgl/shader" id="webgl-hue-saturation-lightness-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 hsl1 = rgb2hsl(pixel1);
+    vec3 hsl2 = rgb2hsl(pixel2);
+    vec3 hslDist = vec3(hue_distance(hsl1.r, hsl2.r), hsl1.gb - hsl2.gb);  
+    return dot(vec3(8.0, 1.0, 32.0), hslDist * hslDist);
+}</script><script type="webgl/shader" id="webgl-lightness-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    float lightness1 = lightness(pixel1);
+    float lightness2 = lightness(pixel2);
+    return abs(lightness1 - lightness2);
+}</script><script type="webgl/shader" id="webgl-luma-distance">
+float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 distances = pixel1 - pixel2;
+    return pixel_luma(distances * distances);
+}</script><script type="webgl/shader" id="webgl-rgb-distance">
+float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 distances = pixel1 - pixel2;
+    return dot(vec3(1.0), distances * distances);
+}</script><script type="webgl/shader" id="webgl-red-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    return abs(pixel1.r - pixel2.r);
+}</script><script type="webgl/shader" id="webgl-green-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    return abs(pixel1.g - pixel2.g);
+}</script><script type="webgl/shader" id="webgl-blue-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    return abs(pixel1.b - pixel2.b);
+}</script><script type="webgl/shader" id="webgl-red-green-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec2 distances = pixel1.rg - pixel2.rg;
+    return dot(vec2(1.0), distances * distances);
+}</script><script type="webgl/shader" id="webgl-red-blue-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec2 distances = pixel1.rb - pixel2.rb;
+    return dot(vec2(1.0), distances * distances);
+}</script><script type="webgl/shader" id="webgl-blue-green-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec2 distances = pixel1.gb - pixel2.gb;
+    return dot(vec2(1.0), distances * distances);
+}</script><script type="webgl/shader" id="webgl-luma-brg-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 distances = pixel1 - pixel2;
+    return dot(vec3(0.299, 0.114, 0.587), distances * distances);
+}</script><script type="webgl/shader" id="webgl-luma-bgr-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 distances = pixel1 - pixel2;
+    return dot(vec3(0.114, 0.299, 0.587), distances * distances);
+}</script><script type="webgl/shader" id="webgl-luma-rgb-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 distances = pixel1 - pixel2;
+    return dot(vec3(0.587, 0.299, 0.114), distances * distances);
+}</script><script type="webgl/shader" id="webgl-luma-rbg-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 distances = pixel1 - pixel2;
+    return dot(vec3(0.587, 0.114, 0.299), distances * distances);
+}</script><script type="webgl/shader" id="webgl-luma-gbr-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 distances = pixel1 - pixel2;
+    return dot(vec3(0.114, 0.587, 0.299), distances * distances);
+}</script><script type="webgl/shader" id="webgl-oklab-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 lab1 = rgbToOklab(pixel1);
+    vec3 lab2 = rgbToOklab(pixel2);
+    vec3 distances = lab1 - lab2;
+    return dot(vec3(1.0), distances * distances);
+}</script><script type="webgl/shader" id="webgl-oklab-taxi-distance">
+float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 lab1 = rgbToOklab(pixel1);
+    vec3 lab2 = rgbToOklab(pixel2);
+    return distance(lab1.yz, lab2.yz) + abs(lab1.x - lab2.x);
+}</script><script type="webgl/shader" id="webgl-cie-lab-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 lab1 = rgbToCieLab(pixel1);
+    vec3 lab2 = rgbToCieLab(pixel2);
+    vec3 distances = lab1 - lab2;
+    return dot(vec3(1.0), distances * distances);
+}</script><script type="webgl/shader" id="webgl-cie-lab-taxi-distance">
+float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 lab1 = rgbToCieLab(pixel1);
+    vec3 lab2 = rgbToCieLab(pixel2);
+    return distance(lab1.yz, lab2.yz) + abs(lab1.x - lab2.x);
+}</script><script type="webgl/shader" id="webgl-cie-xyz-distance">float quick_distance(vec3 pixel1, vec3 pixel2){
+    vec3 linear1 = rgbToLinear(pixel1);
+    vec3 linear2 = rgbToLinear(pixel2);
+    vec3 distances = linear1 - linear2;
+    return dot(vec3(1.0), distances * distances);
+}</script><script type="webgl/shader" id="webgl-random-dither-declaration-fshader">uniform vec2 u_random_seed;
+
+highp float rand(vec2 co){
+    highp float a = 12.9898;
+    highp float b = 78.233;
+    highp float c = 43758.5453;
+    highp float dt = dot(co.xy, vec2(a,b));
+    highp float sn = mod(dt, 3.14);
+    return fract(sin(sn) * c);
+}</script><script type="webgl/shader" id="webgl-simplex-declaration-fshader">
+/*
+Copyright (C) 2011 by Ashima Arts (Simplex noise)
+Copyright (C) 2011-2016 by Stefan Gustavson (Classic noise and others)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+vec3 mod289(vec3 x) {
+    return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec2 mod289(vec2 x) {
+    return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec3 permute(vec3 x) {
+    return mod289(((x*34.0)+10.0)*x);
+}
+
+float snoise(vec2 v){
+    const vec4 C = vec4(0.211324865405187,  // (3.0-sqrt(3.0))/6.0
+                        0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)
+                        -0.577350269189626,  // -1.0 + 2.0 * C.x
+                        0.024390243902439); // 1.0 / 41.0
+
+    vec2 i  = floor(v + dot(v, C.yy) );
+    vec2 x0 = v -   i + dot(i, C.xx);
+
+    vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    vec4 x12 = x0.xyxy + C.xxzz;
+    x12.xy -= i1;
+
+    i = mod289(i); // Avoid truncation effects in permutation
+    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+            + i.x + vec3(0.0, i1.x, 1.0 ));
+
+    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+    m = m*m ;
+    m = m*m ;
+
+    vec3 x = 2.0 * fract(p * C.www) - 1.0;
+    vec3 h = abs(x) - 0.5;
+    vec3 ox = floor(x + 0.5);
+    vec3 a0 = x - ox;
+
+    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+
+    vec3 g;
+    g.x  = a0.x  * x0.x  + h.x  * x0.y;
+    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+    return 130.0 * dot(m, g) * 0.5 + 0.5;
+}</script><script type="webgl/shader" id="webgl-adaptive-threshold-fshader-body">
+float sum = 0.0;
+vec2 dx = vec2(1.0 / u_image_dimensions.x, 0.0);
+vec2 dy = vec2(0.0, 1.0 / u_image_dimensions.y);
+float total = 0.0;
+
+for (float x = -4.0; x <= 4.0; x += 1.0) {
+    for (float y = -4.0; y <= 4.0; y += 1.0) {
+        vec3 sample1 = texture(u_texture, v_texcoord + dx * x + dy * y).rgb;
+        sum += lightness(sample1);
+        total++;
+    }
+}
+float average = sum / total;
+float adjustment = u_threshold + ((1.0 - u_threshold) / 4.0);
+
+bool shouldUseBlackPixel = pixelLightness < adjustment * average;</script><script type="webgl/shader" id="webgl-adaptive-threshold-fshader-declaration">uniform vec2 u_image_dimensions;</script><script type="webgl/shader" id="webgl-arithmetic-dither-fshader-body">bool shouldUseBlackPixel = pixelLightness + u_dither_r_coefficient * (arithmeticDither(gl_FragCoord.xy, pixel.rgb) - 0.5) < u_threshold;</script><script type="webgl/shader" id="webgl-fragment-shader-template">#version 300 es
+precision highp float;
+    
+in vec2 v_texcoord;
+out vec4 output_color;
+uniform sampler2D u_texture;
+uniform float u_threshold;
+uniform vec3 u_black_pixel;
+uniform vec3 u_white_pixel;
+uniform float u_dither_r_coefficient;
+
+#{{customDeclaration}}
+
+#{{lightnessFunction}}
+
+void main(){
+    vec4 pixel = texture(u_texture, v_texcoord);
+    float pixelLightness = lightness(pixel.rgb);
+    #{{customBody}}
+    
+    vec3 outputPixel;
+    if(shouldUseBlackPixel){
+        outputPixel = u_black_pixel;
+    }
+    else{
+        outputPixel = u_white_pixel;
+    }
+    output_color = vec4(outputPixel, pixel.a);
+}</script><script type="webgl/shader" id="webgl-color-replace-fshader-body">
+bool shouldUseBlackPixel = pixel.r < 0.5;</script><script type="webgl/shader" id="webgl-ordered-dither-fshader-body">vec2 bayerPixelCoord = vec2(gl_FragCoord.xy / vec2(u_bayer_texture_dimensions));
+vec4 bayerPixel = texture(u_bayer_texture, bayerPixelCoord);
+float bayerValue = bayerPixel.r - 0.5;
+#{{bayerValueAdjustment}}
+bool shouldUseBlackPixel = pixelLightness + u_dither_r_coefficient * bayerValue < u_threshold;</script><script type="webgl/shader" id="webgl-ordered-dither-fshader-declaration">uniform sampler2D u_bayer_texture;
+uniform float u_bayer_texture_dimensions;</script><script type="webgl/shader" id="webgl-random-threshold-fshader-body">bool shouldUseBlackPixel = pixelLightness + u_dither_r_coefficient * (rand(gl_FragCoord.xy*u_random_seed.xy) - 0.5) < u_threshold;</script><script type="webgl/shader" id="webgl-simplex-threshold-fshader-body">bool shouldUseBlackPixel = pixelLightness + u_dither_r_coefficient * (snoise(gl_FragCoord.xy) - 0.5) < u_threshold;</script><script type="webgl/shader" id="webgl-threshold-fshader-body">bool shouldUseBlackPixel = pixelLightness < u_threshold;</script><script type="webgl/shader" id="webgl-arithmetic-dither-color-body">float aDitherValue = u_dither_r_coefficient * (arithmeticDither(gl_FragCoord.xy, pixel.rgb) - 0.5);
+adjustedPixel = clamp(adjustedPixel + vec3(aDitherValue), 0.0, 1.0);</script><script type="webgl/shader" id="webgl-color-dither-base-fshader">#version 300 es
+precision highp float;
+    
+in vec2 v_texcoord;
+out vec4 output_color;
+uniform sampler2D u_texture;
+
+uniform int u_colors_array_length;
+uniform vec3 u_colors_array[18];
+uniform float u_dither_r_coefficient;
+
+#{{lightnessFunction}}
+
+#{{hslFunctions}}
+
+#{{labFunctions}}
+
+#{{distanceFunction}}
+
+#{{customDeclaration}}
+
+void main(){
+    vec4 pixel = texture(u_texture, v_texcoord);
+    vec3 adjustedPixel = pixel.rgb;
+
+    #{{customBody}}
+    
+    float shortestDistance = 9999.9;
+    vec3 closestPixel = adjustedPixel;
+    
+    for(int i=0;i<u_colors_array_length;i++){
+        vec3 currentColor = u_colors_array[i];
+        float currentDistance = quick_distance(adjustedPixel, currentColor);
+        if(currentDistance < shortestDistance){
+            shortestDistance = currentDistance;
+            closestPixel = currentColor;
+        }
+    }
+    
+    vec3 outputPixel = closestPixel;
+
+    #{{optionalPostscript}}
+    
+    output_color = vec4(outputPixel, pixel.a);
+}</script><script type="webgl/shader" id="webgl-hue-lightness-ordered-dither-color-declaration-fshader">
+float lightnessStep(float l){
+    float lightnessSteps = 4.0;
+
+    return floor(0.5 + l * lightnessSteps) / lightnessSteps;
+}
+
+vec3 hue_lightness_dither(vec3 pixel, float bayerValue){
+    vec3 hsl = rgb2hsl(pixel);
+
+    float pixelLightness = hsl.b;
+    float l1 = lightnessStep(max(pixelLightness - 0.125, 0.0));
+    float l2 = lightnessStep(min(pixelLightness + 0.124, 1.0));
+    float lightnessDiff = (pixelLightness - l1) / (l2 - l1);
+    
+    float adjustedLightness = lightnessDiff < bayerValue ? l1 : l2;
+    
+    return hsl2rgb(vec3(hsl.rg, adjustedLightness));
+}</script><script type="webgl/shader" id="webgl-hue-lightness-ordered-dither-color-postscript-fshader">
+outputPixel = hue_lightness_dither(outputPixel, bayerPixel.r);</script><script type="webgl/shader" id="webgl-ordered-dither-color-body-fshader">vec2 bayerPixelCoord = vec2(gl_FragCoord.xy / vec2(u_bayer_texture_dimensions));
+vec4 bayerPixel = texture(u_bayer_texture, bayerPixelCoord);
+float bayerValue = bayerPixel.r - 0.5;
+#{{bayerValueAdjustment}}
+adjustedPixel = clamp(adjustedPixel + vec3(u_dither_r_coefficient * bayerValue), 0.0, 1.0);</script><script type="webgl/shader" id="webgl-ordered-dither-color-declaration-fshader">uniform sampler2D u_bayer_texture;
+uniform float u_bayer_texture_dimensions;</script><script type="webgl/shader" id="webgl-random-dither-color-body-fshader">float randomValue = u_dither_r_coefficient * (rand(gl_FragCoord.xy*u_random_seed.xy) - 0.5);
+adjustedPixel = clamp(adjustedPixel + vec3(randomValue), 0.0, 1.0);</script><script type="webgl/shader" id="webgl-simplex-dither-color-body-fshader">float simplexValue = u_dither_r_coefficient * (snoise(gl_FragCoord.xy) - 0.5);
+adjustedPixel = clamp(adjustedPixel + vec3(simplexValue), 0.0, 1.0);</script><script type="webgl/shader" id="webgl-yliluoma1-color-fshader">#version 300 es
+
+precision highp float;
+    
+in vec2 v_texcoord;
+out vec4 output_color;
+uniform sampler2D u_texture;
+
+uniform sampler2D u_bayer_texture;
+uniform float u_bayer_texture_dimensions;
+
+uniform int u_colors_array_length;
+uniform vec3 u_colors_array[18];
+
+#{{lightnessFunction}}
+
+#{{hslFunctions}}
+
+#{{labFunctions}}
+
+#{{distanceFunction}}
+
+float evaluate_mixing_error(vec3 pixel, vec3 color0, vec3 color1, vec3 color2, float ratioFraction){
+    return quick_distance(pixel, color0) + quick_distance(color1, color2) * 0.1 * (abs(ratioFraction-0.5) + 0.5);
+}
+
+int devise_mixing_plan(vec3 pixel, float bayerLength, float bayerValue){
+    int bayerLengthInt = int(bayerLength);
+    int color1Index = 0;
+    int color2Index = 0;
+
+    float colorRatio = 0.5;
+
+    float leastPenalty = 9999.99;
+
+    for(int index1=0;index1<u_colors_array_length;index1++){
+        for(int index2=index1;index2<u_colors_array_length;index2++){
+            for(int ratio=0;ratio<bayerLengthInt;ratio++){
+                if(index1 == index2 && ratio != 0){
+                    break;
+                }
+                float ratioFloat = float(ratio);
+                float ratioFraction = ratioFloat / bayerLength;
+
+                vec3 color1 = u_colors_array[index1];
+                vec3 color2 = u_colors_array[index2];
+
+                vec3 color0 = color1 + vec3(ratioFloat) * (color2 - color1) / vec3(bayerLength);
+                float penalty = evaluate_mixing_error(pixel, color0, color1, color2, ratioFraction);
+                if(penalty < leastPenalty){
+
+                    leastPenalty = penalty;
+                    color1Index = index1;
+                    color2Index = index2;
+                    colorRatio = ratioFraction;
+                }
+            }
+        }
+    }
+    if(bayerValue < colorRatio){
+        return color2Index;
+    }
+    return color1Index;
+}
+
+void main(){
+    vec4 pixel = texture(u_texture, v_texcoord);
+    vec3 outputPixel = pixel.rgb;
+    vec2 bayerPixelCoord = vec2(gl_FragCoord.xy / vec2(u_bayer_texture_dimensions));
+    vec4 bayerPixel = texture(u_bayer_texture, bayerPixelCoord);
+    float bayerValue = bayerPixel.r;
+    float bayerLength = u_bayer_texture_dimensions * u_bayer_texture_dimensions;
+    int colorIndex = devise_mixing_plan(outputPixel, bayerLength, bayerValue);
+    
+    outputPixel = u_colors_array[colorIndex];
+
+    output_color = vec4(outputPixel, pixel.a);
+}</script><script type="webgl/shader" id="webgl-yliluoma2-color-fshader">#version 300 es
+
+precision highp float;
+
+in vec2 v_texcoord;
+out vec4 output_color;
+uniform sampler2D u_texture;
+
+uniform sampler2D u_bayer_texture;
+uniform float u_bayer_texture_dimensions;
+
+uniform int u_colors_array_length;
+uniform vec3 u_colors_array[18];
+
+#{{lightnessFunction}}
+
+#{{hslFunctions}}
+
+#{{labFunctions}}
+
+#{{distanceFunction}}
+
+int deviseMixingPlan(vec3 pixel, int planIndex){
+    vec2 planValues[18];
+    int proportionTotal = 0;
+    vec3 soFar = vec3(0.0);
+    for(int i=0;i<u_colors_array_length;i++){
+        int chosenAmount = 1;
+        int chosen = 0;
+        int maxTestCount = int(max(1.0, float(proportionTotal)));
+
+        float leastPenalty = 9999.99;
+
+        for(int index=0; index<u_colors_array_length; index++){ 
+            vec3 color = u_colors_array[index];
+            vec3 sum = soFar;
+            vec3 add = color;
+            for(int p=1;p<=maxTestCount;p*=2){
+                sum += add;
+                add += add;
+                vec3 test = sum / vec3(float(proportionTotal + p));
+                float penalty = quick_distance(pixel, test);
+                if(penalty < leastPenalty){
+                    leastPenalty = penalty;
+                    chosen = index;
+                    chosenAmount = p;
+                }
+            }
+        }
+        for(int p=0; p<chosenAmount; ++p){
+            if(proportionTotal >= u_colors_array_length){
+                break;
+            }
+            float luma = pixel_luma(u_colors_array[chosen]);
+            planValues[proportionTotal] = vec2(float(chosen), luma);
+            
+            proportionTotal++;
+        }
+        vec3 color = u_colors_array[chosen];
+        soFar = soFar + color * vec3(float(chosenAmount));
+        
+        if(proportionTotal >= u_colors_array_length){
+            break;
+        }
+    }
+
+    for(int i=1;i<u_colors_array_length;i++){
+        for(int j=i;j>0;j--){
+            if(planValues[j].y < planValues[j-1].y){
+                vec2 temp = planValues[j];
+                planValues[j] = planValues[j-1];
+                planValues[j-1] = temp;
+            }
+            else {
+                break;
+            }
+        }
+    }
+
+    return int(planValues[planIndex].x);
+}
+
+void main(){
+    vec4 pixel = texture(u_texture, v_texcoord);
+    vec3 outputPixel = pixel.rgb;
+    vec2 bayerPixelCoord = vec2(gl_FragCoord.xy / vec2(u_bayer_texture_dimensions));
+    vec4 bayerPixel = texture(u_bayer_texture, bayerPixelCoord);
+    float bayerLength = u_bayer_texture_dimensions * u_bayer_texture_dimensions;
+
+    float bayerValue = bayerPixel.r * (bayerLength - 1.0);
+    int planIndex = int(bayerValue * float(u_colors_array_length) / bayerLength);
+    int colorIndex = deviseMixingPlan(outputPixel, planIndex);
+
+    output_color = vec4(u_colors_array[colorIndex], pixel.a);
+}
+</script><script type="webgl/shader" id="webgl-stark-ordered-color-dither-fshader">#version 300 es
+precision highp float;
+    
+in vec2 v_texcoord;
+out vec4 output_color;
+uniform sampler2D u_texture;
+
+uniform int u_colors_array_length;
+uniform vec3 u_colors_array[18];
+uniform float u_dither_r_coefficient;
+
+uniform sampler2D u_bayer_texture;
+uniform float u_bayer_texture_dimensions;
+
+#{{lightnessFunction}}
+
+#{{hslFunctions}}
+
+#{{labFunctions}}
+
+#{{distanceFunction}}
+
+void main(){
+    vec4 pixel = texture(u_texture, v_texcoord);
+    vec3 adjustedPixel = pixel.rgb;
+    
+    float shortestDistance = 9999.9;
+    vec3 outputPixel = adjustedPixel;
+    
+    for(int i=0;i<u_colors_array_length;i++){
+        vec3 currentColor = u_colors_array[i];
+        float currentDistance = quick_distance(adjustedPixel, currentColor);
+        if(currentDistance < shortestDistance){
+            shortestDistance = currentDistance;
+            outputPixel = currentColor;
+        }
+    }
+    
+    vec2 bayerPixelCoord = vec2(gl_FragCoord.xy / vec2(u_bayer_texture_dimensions));
+    vec4 bayerPixel = texture(u_bayer_texture, bayerPixelCoord);
+    float bayerValue = bayerPixel.r;
+    float bayerPercentage = 1.0 - (bayerValue * u_dither_r_coefficient);
+
+    if(shortestDistance > 0.0){
+        float greatestAllowedDistance = shortestDistance;
+        for(int i=0;i<u_colors_array_length;i++){
+            vec3 currentColor = u_colors_array[i];
+            float currentDistance = quick_distance(adjustedPixel, currentColor);
+            if(currentDistance > greatestAllowedDistance && currentDistance / shortestDistance * bayerPercentage < 1.0){
+                greatestAllowedDistance = currentDistance;
+                outputPixel = currentColor;
+            }
+        }
+    }
+    
+    output_color = vec4(outputPixel, pixel.a);
+}</script>
+        <script type="text/javascript" src="./assets/app.js?v=1781980777430"></script>
+    </body>
+</html>
