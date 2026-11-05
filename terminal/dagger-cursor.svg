@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" shape-rendering="crispEdges">
+<title>Pixel dagger cursor</title>
+<!-- Stair-stepped silhouette; point at 2,2 is the click hotspot. -->
+<path fill="#172019" d="M2 2h6v2h4v2h4v2h2v2h2v2h2v2h2v2h2v2h2v2h2v-2h4v2h2v4h-2v2h-2v2h-2v2h2v2h2v2h2v2h2v2h4v2h2v4h-2v2h-4v-2h-2v-4h-2v-2h-2v-2h-2v-2h-2v-2h-2v2h-2v2h-4v-2h-2v-4h2v-2h2v-2h-2v-2h-2v-2h-2v-2h-2v-2h-2v-2h-2v-2H8v-4H6v-4H4V8H2Z"/>
+<path fill="#f8f4d9" d="M4 4h4v2h4v2h4v2h2v2h2v2h2v2h2v2h2v2h2v2h-4v-2h-2v-2h-2v-2h-2v-2h-2v-2h-2v-2h-2v-2H8V6H4Z"/>
+<path fill="#b2beb0" d="M6 8h2v4h2v2h2v2h2v2h2v2h2v2h2v2h4v-2h2v2h-2v2h-2v-2h-2v-2h-2v-2h-2v-2h-2v-2h-2v-2h-2v-2H8v-2H6Z"/>
+<path fill="#70826c" d="M10 10h2v2h2v2h2v2h2v2h2v2h2v2h2v2h-2v-2h-2v-2h-2v-2h-2v-2h-2v-2h-2v-2h-2Z"/>
+<path fill="#b3a46a" d="M22 28h2v-2h2v-2h2v-2h2v-2h2v2h2v2h-2v2h-2v2h-2v2h-2v2h-4Z"/>
+<path fill="#f3efc8" d="M22 28h2v-2h2v-2h2v-2h2v2h-2v2h-2v2h-2v2h-2Z"/>
+<path fill="#70814e" d="M28 30h2v2h2v2h2v2h2v2h2v2h-2v-2h-2v-2h-2v-2h-2v-2h-2Z"/>
+<path fill="#ddd19c" d="M30 32h2v2h-2Zm4 4h2v2h-2Z"/>
+<path fill="#b3a46a" d="M38 40h2v-2h2v2h2v2h-2v2h-2v-2h-2Z"/>
+<path fill="#e8eac3" d="M40 40h2v2h-2Z"/>
+<path fill="#9f1729" d="M4 4h4v2h4v2h2v4h-2v-2h-2V8H8V6H4Z"/>
+<path fill="#df3544" d="M4 4h4v2h2v2H8V6H4Z"/>
+<path fill="#671826" d="M12 10h2v4h-2Z"/>
+</svg>
